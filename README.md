@@ -237,9 +237,9 @@ $ grep -r "Fox\|RiggedFigure\|load(\|preload(" scripts/
 
 ### 7.2 运行证据（我实际跑过的）
 
-我在这台机器上用 `Godot_v4.7.2-stable_win64_console.exe` 实跑过，结论写在这里：
+在测试机上用 `Godot_v4.7.2-stable_win64_console.exe` 实跑过，结论写在这里：
 
-| 我做的事 | 结果 |
+| 验证项 | 结果 |
 |---|---|
 | 干净副本（无 `.godot/`）+ `--headless --quit-after 120` | **失败**：18 条 `SCRIPT ERROR`，`main.gd` 加载失败，游戏没起来（但退出码是 0）。见 §1.1 |
 | 干净副本 + 非无头 `--quit-after 120`（GUI 路由） | **同样失败**，18 条 `SCRIPT ERROR`，也**不会**生成 `.godot/` |
