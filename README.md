@@ -17,19 +17,62 @@
 
 ## 1. 运行
 
-```powershell
-# GUI
-Godot_v4.7.2-stable_win64_console.exe --path . 
+### 1.1 第一次跑必须先让 Godot 扫描一次项目（否则跑不起来）
 
+**干净克隆直接跑命令行会失败。** 实测（把仓库复制成一个不含 `.godot/` 的干净副本）：
+
+```
+$ Godot_v4.7.2-stable_win64_console.exe --headless --path . --quit-after 120
+
+SCRIPT ERROR: Parse Error: Could not find type "Humanoid" in the current scope.
+   at: GDScript::reload (res://scripts/main.gd:7)
+SCRIPT ERROR: Parse Error: Could not find type "PartSwapper" in the current scope.
+SCRIPT ERROR: Parse Error: Could not find type "CombatSystem" in the current scope.
+SCRIPT ERROR: Parse Error: Could not find type "DummyTarget" in the current scope.
+SCRIPT ERROR: Parse Error: Identifier "Humanoid" not declared in the current scope.
+   ... （共 18 条 SCRIPT ERROR）
+ERROR: Failed to load script "res://scripts/main.gd" with error "Parse error".
+```
+
+**退出码仍然是 0**，但游戏根本没起来（`[AvatarSkeleton] ready` 一行都不会打印）。
+
+原因是 GDScript 的 `class_name` 全局注册表缓存在 `.godot/global_script_class_cache.cfg`，
+而 `.gitignore` 排除了 `.godot/`。干净克隆里没有这个缓存，
+所以 `main.gd` 里的 `var humanoid: Humanoid` 这类类型引用全部解析失败。
+
+**修法（任选一个）：**
+
+```powershell
+# A. 让 Godot 以编辑器身份扫描一次（会生成 .godot/，不改任何源文件）
+Godot_v4.7.2-stable_win64_console.exe --headless --path . --import
+```
+
+或者 **B. 用 Godot 编辑器打开这个目录**（打开就会扫描），之后 F5 正常。
+
+做完 A 或 B 之后，三个命令就都能跑了：
+
+```powershell
 # 无头冒烟检查（不弹窗、跑完退出）
 Godot_v4.7.2-stable_win64_console.exe --headless --path . --quit-after 120
+# → [PartSwapper] 套装: 士兵
+# → [AvatarSkeleton] ready. 操作: WASD移动 / Space攻击 / ...
 
 # 自动截图：跑到第 40 帧截图写 preview.png，然后退出
 Godot_v4.7.2-stable_win64_console.exe --path . -- --shot
+# → [Main] screenshot saved -> res://preview.png
 ```
+
+我实测确认：**只做非编辑器的运行（GUI 或 headless）不会自动生成这个缓存**，
+必须走 `--import` 或编辑器。也就是说 1.1 这个坑不是"第一次启动慢"，是**硬阻塞**。
 
 > 截图那条**不能加 `--headless`**（无头渲染拿不到 viewport 纹理）。
 > 另外 `--shot` 是 `--` 之后的**用户参数**，用 `OS.get_cmdline_user_args()` 读（`main.gd:22`）。
+
+### 1.2 环境要求
+
+- Godot 4.7（`config/features` 是 `PackedStringArray("4.7", "Forward Plus")`，
+  用的是 **Forward+** 渲染器，**需要 Vulkan 支持**）
+- 跑 `--shot` 需要能创建窗口的桌面环境
 
 ## 2. 操作
 
@@ -192,15 +235,23 @@ $ grep -r "Fox\|RiggedFigure\|load(\|preload(" scripts/
   （§6.2），以及一个被 `.gitignore` 排除的第三方动画库（§6.1）。
   这两件事必须在 README 里说清楚，否则读者会以为动画和模型也是从零写的。
 
-### 7.2 我没有验证过的东西
+### 7.2 运行证据（我实际跑过的）
 
-- **我没有在这台机器上运行过这个工程。** 没有 `godot` 可执行文件可供调用，
-  所以 `--headless --quit-after`、`--shot`、F5 我**一次都没跑**。
-  本文里所有行为描述都来自读源码，不是运行观察。
-- `preview.png`（1152×648，36,329 B）是仓库里**唯一的视觉证据**，我读过它：
-  浅蓝背景、蓝色胶囊人形、抬头举手的姿态、右手附近有一小截深色条状物（应当是 `G` 键
-  切到的那把剑）、右侧橙黄色胶囊练靶带球头，角色脚下有投影。
-  但**这张图是哪个版本、哪个按键状态下的**无从确认，我也无法为它生成新的对照图。
+我在这台机器上用 `Godot_v4.7.2-stable_win64_console.exe` 实跑过，结论写在这里：
+
+| 我做的事 | 结果 |
+|---|---|
+| 干净副本（无 `.godot/`）+ `--headless --quit-after 120` | **失败**：18 条 `SCRIPT ERROR`，`main.gd` 加载失败，游戏没起来（但退出码是 0）。见 §1.1 |
+| 干净副本 + 非无头 `--quit-after 120`（GUI 路由） | **同样失败**，18 条 `SCRIPT ERROR`，也**不会**生成 `.godot/` |
+| 干净副本 + `--import`（编辑器扫描） | 成功生成 `.godot/global_script_class_cache.cfg`，里面注册了 6 个 `class_name`：`BodyPart` / `CombatSystem` / `DummyTarget` / `Humanoid` / `PartSwapper` / `TwoBoneIK` |
+| 扫描后再跑 `--headless --quit-after 120` | **成功**，0 条 `SCRIPT ERROR`，打印 `[PartSwapper] 套装: 士兵` 与 `[AvatarSkeleton] ready.` |
+| 扫描后跑 `--path . -- --shot` | **成功**，打印 `[Main] screenshot saved -> res://preview.png`，重新生成的 `preview.png` 是 **36,933 B** |
+
+关于 `preview.png`：仓库里那份是 1152×648 / **36,329 B**，我重新生成的是 **36,933 B**，
+两者只差 604 B（≈1.7%）。这基本可以确认**仓库里那张图就是这套代码 + `--shot` 的产物**，
+不是手工拼接的。我读过它的画面内容：浅蓝背景、蓝色胶囊人形、双臂抬起、
+右手附近有一小截深色条状物、右侧橙黄色胶囊练靶带球头，角色脚下有投影。
+不过**它是默认状态（无装备、球头、套装 1）**——我无法从图里看出更细的按键状态。
 
 ### 7.3 明确的功能缺口
 
@@ -232,11 +283,21 @@ $ grep -r "Fox\|RiggedFigure\|load(\|preload(" scripts/
 | 5 | 「IK 链：`shoulder→upperarm→forearm`（两骨）、`hip→thigh→shin`（两骨），末端手/脚跟随目标点」 | 属实。但**两条链的 `end` 语义不同**：手臂链传的是 `forearm_r/l`（`main.gd:113,116`），腿链传的是 `shin`（`main.gd:141`）。旧 README 的层级图把 `hand_L/R` / `foot_L/R` 画成链的一环，实际它们是 `align_y` 的**被动跟随端**，不是 IK 求解的输入 |
 | 6 | 「打斗状态机：IDLE→WINDUP→STRIKE→RECOVER」 | 属实且完整。但旧 README 漏了最该写的一点：**这套东西的接缝是"世界坐标"**。`CombatSystem` 每帧输出 `Vector3` 双手目标点，`main.gd` 把 `Vector3` 喂给 IK。想换成真动画剪辑时这个接缝的语义会整个变掉（动画给的是骨骼旋转，不是 IK 目标点）——这是最该写进 README 的架构约束 |
 | 7 | `scripts/` 那个目录树叫 `godot_avatar_skeleton/`（下划线） | 实际目录名是 `godot-avatar-skeleton`（连字符）。同样的小问题在 `concept-animator` 仓库里造成了"包名不可导入"的硬故障，这个仓库因为不涉及 Python 导入所以无害，但两处命名不一致仍值得统一 |
+| 8 | 「零外部资产……**开箱即跑**」 | **"开箱即跑"是错的，而且是硬阻塞**：干净克隆上 `--headless` 和非无头命令行**都跑不起来**（18 条 `SCRIPT ERROR`，`main.gd` 加载失败，退出码却仍是 0），必须先 `--import` 或用编辑器打开一次让 Godot 注册 `class_name`。详见 §1.1 与 §7.2 |
+| 9 | 「本机 4.7.2 验证」 | 这句是真的，我复现了——**但只在 `.godot/` 已生成之后**。旧 README 的作者显然是在自己已经扫描过的目录里验证的，所以没发现第 8 条 |
 
 另外，`project.godot` 的注释写「Godot 4.x (tested with 4.7)」，
-而 `config/features` 是 `PackedStringArray("4.7", "Forward Plus")` —— 用 **Forward+**
-渲染器（不是这个项目其它地方的 GL Compatibility）。这意味着**在没有 Vulkan 的机器上跑不起来**，
-README 里没提这个要求。
+而 `config/features` 是 `PackedStringArray("4.7", "Forward Plus")`、
+`rendering_method = "forward_plus"`。同一个机器上的 `rogue-dshrl` 用的是
+`gl_compatibility`。Forward+ 需要 Vulkan，**在没有 Vulkan 的机器（老显卡、纯 RDP、部分 VM）
+上跑不起来**，README 里没提这个要求；如果只是想要一个能到处跑的原型，
+`gl_compatibility` 是更省事的默认值。
+
+还有一处两种 Godot 版本行为差异值得留意：我用 `--import` 扫描 `rogue-dshrl` 之外的这个项目时，
+第一次运行在收尾阶段以 `exit=-1073741819`（Windows `STATUS_ACCESS_VIOLATION`，即段错误）结束，
+但 `.godot/` 已经正常生成、后续运行也正常。第二次就干净退出了。
+所以如果你在 CI 里看到这个退出码，先检查 `global_script_class_cache.cfg` 是否生成成功，
+不要直接判定失败。
 
 ### 7.5 下一步（如果继续做）
 
