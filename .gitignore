@@ -1,0 +1,12 @@
+# Godot 4
+.godot/
+.import/
+export_presets.cfg
+
+# 第三方动画资产：体积过大(含 67MB .blend)且自带嵌套 .git，不随仓库分发
+# 需要者请自行获取 Godot4-OpenAnimationLibraries
+assets/animations/
+
+# 大文件
+*.blend
+*.blend1
